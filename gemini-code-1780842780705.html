@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bio-Telemetry Clinical AR HUD v4.1</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-glass-heavy: rgba(13, 15, 19, 0.85);
+            --bg-glass-light: rgba(20, 24, 33, 0.5);
+            --border-clinical: rgba(255, 255, 255, 0.08);
+            --border-focus: rgba(255, 255, 255, 0.2);
+            
+            --text-primary: #ffffff;
+            --text-muted: rgba(255, 255, 255, 0.5);
+            --text-dim: rgba(255, 255, 255, 0.3);
+            
+            --status-nominal: #30d158;   
+            --status-warning: #ff9f0a;   
+            --status-critical: #ff453a;  
+            
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            background-color: #050608;
+            font-family: var(--font-sans);
+            color: var(--text-primary);
+            overflow: hidden;
+            display: grid;
+            grid-template-rows: 56px 1fr 36px;
+            padding: 16px;
+            gap: 14px;
+            user-select: none;
+        }
+
+        #ar-hardware-stream {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            object-fit: cover;
+            z-index: 0;
+            pointer-events: none;
+            filter: brightness(0.55) contrast(1.1) saturate(0.9);
+        }
+
+        header, main, footer {
+            position: relative;
+            z-index: 10;
+        }
+
+        header {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            align-items: center;
+            background: var(--bg-glass-heavy);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-clinical);
+            padding: 0 24px;
+            border-radius: 8px;
+        }
+
+        .system-node {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .node-pulse-dot {
+            width: 6px; height: 6px;
+            background-color: var(--status-warning);
+            border-radius: 50%;
+            animation: telemetry-pulse 2s infinite ease-in-out;
+        }
+
+        .central-diagnostic-registry {
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+            color: var(--status-warning);
+            text-align: center;
+        }
+
+        .chronometer-node {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-muted);
+            text-align: right;
+        }
+
+        main {
+            display: grid;
+            grid-template-columns: 350px 1fr 360px;
+            gap: 16px;
+            height: 100%;
+            min-height: 0;
+        }
+
+        .hud-column {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            height: 100%;
+            min-height: 0;
+        }
+
+        .clinical-panel {
+            background: var(--bg-glass-light);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border: 1px solid var(--border-clinical);
+            border-radius: 8px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            transition: border 0.3s ease, background 0.3s ease;
+        }
+
+        .clinical-panel:hover {
+            border: 1px solid var(--border-focus);
+            background: rgba(20, 24, 33, 0.55);
+        }
+
+        .panel-header-tag {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            border-bottom: 1px solid var(--border-clinical);
+            padding-bottom: 6px;
+        }
+
+        .metric-registry-row {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .metric-metadata {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .metric-numerical-core {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+
+        .value-token {
+            font-family: var(--font-mono);
+            font-size: 32px;
+            font-weight: 300;
+            line-height: 1;
+            transition: color 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .unit-token {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+
+        .status-micro-dot {
+            width: 5px; height: 5px;
+            border-radius: 50%;
+            margin-left: auto;
+            align-self: center;
+            transition: background-color 0.4s ease;
+        }
+
+        .state-nominal { color: var(--status-nominal); }
+        .state-warning { color: var(--status-warning); }
+        .state-critical { color: var(--status-critical); }
+        
+        .bg-nominal { background-color: var(--status-nominal); }
+        .bg-warning { background-color: var(--status-warning); }
+        .bg-critical { background-color: var(--status-critical); }
+
+        .sparkline-container {
+            border-top: 1px dashed var(--border-clinical);
+            padding-top: 12px;
+            margin-top: 4px;
+        }
+
+        .sparkline-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .sparkline-canvas {
+            width: 100%;
+            height: 55px;
+            overflow: visible;
+        }
+
+        .sparkline-path {
+            fill: none;
+            stroke-width: 1.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            transition: stroke 0.5s ease;
+        }
+
+        .clear-sight-matrix {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .optical-reticle {
+            width: 24px; height: 24px;
+            position: relative;
+            opacity: 0.25;
+            transition: opacity 0.3s ease;
+        }
+
+        .optical-reticle::before, .optical-reticle::after {
+            content: '';
+            position: absolute;
+            background: #ffffff;
+        }
+        .optical-reticle::before { top: 11px; left: 0; width: 24px; height: 1px; }
+        .optical-reticle::after { top: 0; left: 11px; width: 1px; height: 24px; }
+
+        .intervention-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+        }
+
+        .intervention-node {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 12px;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border-clinical);
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .intervention-node:hover {
+            background: rgba(255,255,255,0.05);
+            border-color: var(--border-focus);
+            transform: translateY(-1px);
+        }
+
+        .intervention-badge {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .intervention-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .intervention-description {
+            font-size: 11px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        /* ОКНО ОШИБКИ И ИНИЦИАЛИЗАЦИИ КАМЕРЫ */
+        #telemetry-hardware-error {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(15, 17, 20, 0.98);
+            border: 1px solid var(--status-warning);
+            box-shadow: 0 24px 50px rgba(0,0,0,0.6);
+            backdrop-filter: blur(25px);
+            padding: 28px;
+            border-radius: 12px;
+            z-index: 1000;
+            width: 90%;
+            max-width: 450px;
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        #telemetry-hardware-error h4 {
+            color: var(--status-warning);
+            font-size: 14px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            margin-bottom: 14px;
+        }
+
+        #telemetry-error-log {
+            font-family: var(--font-sans);
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--text-muted);
+            background: rgba(0,0,0,0.4);
+            padding: 16px;
+            border-radius: 6px;
+            text-align: left;
+            margin-bottom: 20px;
+            border: 1px solid var(--border-clinical);
+        }
+
+        /* КНОПКА ЗАПУСКА КАМЕРЫ */
+        .primary-trigger-btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            background: var(--status-nominal);
+            color: #050608;
+            border: none;
+            font-family: var(--font-sans);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(48, 209, 88, 0.2);
+            transition: background 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.1s ease;
+        }
+
+        .primary-trigger-btn:hover {
+            background: #4cd964;
+        }
+
+        .primary-trigger-btn:active {
+            transform: scale(0.98);
+        }
+
+        footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 8px;
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 0.04em;
+            background: var(--bg-glass-heavy);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid var(--border-clinical);
+            margin: 0 -16px -16px -16px;
+            padding: 0 24px;
+        }
+
+        @keyframes telemetry-pulse {
+            0% { opacity: 0.4; }
+            50% { opacity: 1; }
+            100% { opacity: 0.4; }
+        }
+
+        @media (max-width: 1024px) {
+            body { grid-template-rows: auto; overflow-y: auto; height: auto; padding: 10px; }
+            main { grid-template-columns: 1fr; height: auto; }
+            .clear-sight-matrix { display: none; }
+            header { grid-template-columns: 1fr auto; padding: 12px; gap: 8px; }
+            .chronometer-node { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <video autoplay playsinline muted id="ar-hardware-stream"></video>
+
+    <div id="telemetry-hardware-error">
+        <h4 id="error-title">AR Video Pipeline Setup</h4>
+        <div id="telemetry-error-log">
+            Мобильные браузеры блокируют автоматический доступ к камере без прямого действия пользователя. <br><br> Нажми на кнопку ниже, чтобы запустить инициализацию видеолинка и предоставить права.
+        </div>
+        <button id="camera-activation-trigger" class="primary-trigger-btn">Открыть Камеру</button>
+    </div>
+
+    <header>
+        <div class="system-node">
+            <span class="node-pulse-dot" id="status-pulse"></span>
+            <span id="hardware-string">AR Core // Booting</span>
+        </div>
+        <div class="central-diagnostic-registry" id="central-status-bar">System Diagnostic: Awaiting Sensor</div>
+        <div class="chronometer-node" id="hud-clock">00:00:00</div>
+    </header>
+
+    <main>
+        <section class="hud-column">
+            <div class="clinical-panel">
+                <div class="panel-header-tag">Biochemical Telemetry Engine</div>
+                
+                <div class="metric-registry-row" id="node-glucose">
+                    <div class="metric-metadata"><span>Blood Glucose</span><span>Ref: 4.0–5.9</span></div>
+                    <div class="metric-numerical-core">
+                        <span class="value-token state-critical" id="val-glucose">3.20</span>
+                        <span class="unit-token">mmol/L</span>
+                        <span class="status-micro-dot bg-critical" id="dot-glucose"></span>
+                    </div>
+                </div>
+
+                <div class="metric-registry-row" id="node-hemoglobin">
+                    <div class="metric-metadata"><span>Total Hemoglobin</span><span>Ref: 130–160</span></div>
+                    <div class="metric-numerical-core">
+                        <span class="value-token state-warning" id="val-hemoglobin">105</span>
+                        <span class="unit-token">g/L</span>
+                        <span class="status-micro-dot bg-warning" id="dot-hemoglobin"></span>
+                    </div>
+                </div>
+
+                <div class="metric-registry-row" id="node-dopamine">
+                    <div class="metric-metadata"><span>Dopamine Baseline</span><span>Ref: Baseline Deviation</span></div>
+                    <div class="metric-numerical-core">
+                        <span class="value-token state-critical" id="val-dopamine">-40%</span>
+                        <span class="unit-token">Delta</span>
+                        <span class="status-micro-dot bg-critical" id="dot-dopamine"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="clinical-panel">
+                <div class="panel-header-tag">Glucose Kinematics Matrix (24h)</div>
+                <div class="sparkline-container">
+                    <div class="sparkline-meta">
+                        <span>Realtime Dynamic Curve</span>
+                        <span class="state-critical" id="trend-label-glucose">Trending Down</span>
+                    </div>
+                    <svg class="sparkline-canvas" id="svg-glucose" viewBox="0 0 300 60" preserveAspectRatio="none">
+                        <path class="sparkline-path" id="path-glucose" d="" stroke="#ff453a" />
+                    </svg>
+                </div>
+            </div>
+        </section>
+
+        <section class="clear-sight-matrix">
+            <div class="optical-reticle" id="hud-reticle"></div>
+        </section>
+
+        <section class="hud-column">
+            <div class="clinical-panel" style="flex: 1; min-height: 0;">
+                <div class="panel-header-tag">Target Protocols & Interventions</div>
+                <div class="intervention-list">
+                    
+                    <div class="intervention-node" id="action-glucose">
+                        <div class="intervention-badge state-critical">
+                            <span class="status-micro-dot bg-critical" style="margin:0;"></span> Metabolic Error
+                        </div>
+                        <div class="intervention-title">Administer Complex Carbohydrates</div>
+                        <div class="intervention-description">Acute hypoglycemia state. Trigger complex starch matrix distribution. Avoid high-glycemic monocrystals.</div>
+                    </div>
+
+                    <div class="intervention-node" id="action-hypoxia">
+                        <div class="intervention-badge state-warning">
+                            <span class="status-micro-dot bg-warning" style="margin:0;"></span> Hypoxia Risk
+                        </div>
+                        <div class="intervention-title">Initiate Oxygen Integration</div>
+                        <div class="intervention-description">Suboptimal tissue oxygenation detected. Execute fresh air induction protocol or 20-min cycle walking.</div>
+                    </div>
+
+                    <div class="intervention-node" id="action-dopamine">
+                        <div class="intervention-badge state-critical">
+                            <span class="status-micro-dot bg-critical" style="margin:0;"></span> Attenuation Active
+                        </div>
+                        <div class="intervention-title">Isolate High-Entropy Stimuli</div>
+                        <div class="intervention-description">Dopamine baseline variance exceeds limits. Restrict digital loops. Shift context to structural engineering tasks.</div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="clinical-panel">
+                <div class="panel-header-tag">Neuro-Receptor Saturation Model (6h)</div>
+                <div class="sparkline-container">
+                    <div class="sparkline-meta">
+                        <span>Receptor Refractory Trend</span>
+                        <span class="state-warning" id="trend-label-dopamine">Depletion State</span>
+                    </div>
+                    <svg class="sparkline-canvas" id="svg-dopamine" viewBox="0 0 300 60" preserveAspectRatio="none">
+                        <path class="sparkline-path" id="path-dopamine" d="" stroke="#ff9f0a" />
+                    </svg>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div id="footer-node-string">Hardware Link: LIVE_MATRIX_NODE // Kernel 4.1.0-PRO</div>
+        <div>AR Diagnostic Engine // Latency: 4ms // Region: UZB</div>
+    </footer>
+
+    <script>
+        const BIOMED_CONFIG = {
+            glucose: { minNominal: 4.0, maxNominal: 5.9, minWarning: 3.5, maxWarning: 6.5 },
+            hemoglobin: { minNominal: 130, maxNominal: 160, minWarning: 115, maxWarning: 175 },
+            dopamine: { minNominal: -15, maxNominal: 15, minWarning: -30, maxWarning: 30 }
+        };
+
+        const HUDState = {
+            metrics: { glucose: 3.20, hemoglobin: 105.0, dopamine: -40.0 },
+            history: {
+                glucose: Array.from({length: 30}, (_, i) => 4.2 - (i * 0.04) + (Math.random() * 0.15)),
+                dopamine: Array.from({length: 30}, (_, i) => -10 - (i * 1.1) + (Math.random() * 3))
+            },
+            interventions: { glucoseActive: false, hypoxiaActive: false, dopamineActive: false }
+        };
+
+        class Chronometer {
+            static init() {
+                const clockNode = document.getElementById('hud-clock');
+                const update = () => {
+                    const d = new Date();
+                    clockNode.innerText = d.toLocaleTimeString('ru-RU', { hour12: false });
+                };
+                setInterval(update, 1000);
+                update();
+            }
+        }
+
+        class ARCameraPipeline {
+            constructor() {
+                this.videoElement = document.getElementById('ar-hardware-stream');
+                this.errorOverlay = document.getElementById('telemetry-hardware-error');
+                this.errorLog = document.getElementById('telemetry-error-log');
+                this.errorTitle = document.getElementById('error-title');
+                this.statusLabel = document.getElementById('hardware-string');
+                this.pulseDot = document.getElementById('status-pulse');
+            }
+
+            async initializeCapture() {
+                if (!window.isSecureContext) {
+                    this.triggerHardwareFault(
+                        "Критическая уязвимость протокола",
+                        "Захват камеры заблокирован движком из-за отсутствия HTTPS. Доступ к API медиа-девайсов возможен только на localhost или защищенных SSL-доменах."
+                    );
+                    return;
+                }
+
+                const constraints = {
+                    video: {
+                        facingMode: "environment",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                };
+
+                try {
+                    this.statusLabel.innerText = "AR Link // Requesting Sync...";
+                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    this.videoElement.srcObject = stream;
+                    
+                    this.statusLabel.innerText = "AR Optical Link // Active";
+                    this.pulseDot.style.backgroundColor = "var(--status-nominal)";
+                    this.errorOverlay.style.display = "none"; 
+                } catch (exception) {
+                    this.handlePipelineError(exception);
+                }
+            }
+
+            handlePipelineError(error) {
+                let coreMessage = "Доступ к камере отклонен (Permission Denied).";
+                let techDetails = "Вы заблокировали доступ для этой вкладки. <br><br><b>Как исправить:</b> Нажмите на значок параметров/замочка возле URL-адреса сайта в браузере, найдите пункт 'Камера' и переключите тумблер на 'Разрешить'. Затем нажмите кнопку открытия снова.";
+
+                if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                    coreMessage = "Оптический модуль не обнаружен.";
+                    techDetails = "Устройство не может сопоставить заднюю камеру (environment). Проверьте работоспособность шлейфов камер.";
+                } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+                    coreMessage = "Оборудование заблокировано процессом ОС.";
+                    techDetails = "Камера захвачена другим приложением (Telegram, Discord, Камера телефона). Сверните фоновые софты и повторите попытку.";
+                }
+
+                this.triggerHardwareFault(coreMessage, techDetails);
+            }
+
+            triggerHardwareFault(summary, details) {
+                this.errorOverlay.style.display = "block";
+                this.errorTitle.innerText = "Hardware Fault Encountered";
+                this.errorTitle.style.color = "var(--status-critical)";
+                this.errorOverlay.style.borderColor = "var(--status-critical)";
+                this.errorLog.innerHTML = `<b>${summary}</b><br><br><span style="color:var(--text-muted); font-size: 11px;">${details}</span>`;
+                this.statusLabel.innerText = "AR Link // Error";
+                this.pulseDot.style.backgroundColor = "var(--status-critical)";
+            }
+        }
+
+        class TelemetryEngine {
+            static computeDynamicMetabolism() {
+                if (HUDState.interventions.glucoseActive) {
+                    HUDState.metrics.glucose += 0.025;
+                    if (HUDState.metrics.glucose >= 4.9) HUDState.interventions.glucoseActive = false;
+                } else {
+                    HUDState.metrics.glucose -= 0.002 + (Math.random() * 0.004 - 0.002);
+                }
+                
+                if (HUDState.interventions.hypoxiaActive) {
+                    HUDState.metrics.hemoglobin += 0.2;
+                    if (HUDState.metrics.hemoglobin >= 132) HUDState.interventions.hypoxiaActive = false;
+                } else {
+                    HUDState.metrics.hemoglobin += (Math.random() * 0.1 - 0.05);
+                }
+
+                if (HUDState.interventions.dopamineActive) {
+                    HUDState.metrics.dopamine += 0.3;
+                    if (HUDState.metrics.dopamine >= 0) HUDState.interventions.dopamineActive = false;
+                } else {
+                    HUDState.metrics.dopamine -= 0.05 + (Math.random() * 0.1 - 0.05);
+                }
+
+                TelemetryEngine.pushToHistory(HUDState.history.glucose, HUDState.metrics.glucose, 30);
+                TelemetryEngine.pushToHistory(HUDState.history.dopamine, HUDState.metrics.dopamine, 30);
+            }
+
+            static pushToHistory(array, newValue, maxLength) {
+                array.push(newValue);
+                if (array.length > maxLength) array.shift();
+            }
+
+            static evaluateState(value, config) {
+                if (value < config.minWarning || value > config.maxWarning) return 'critical';
+                if (value < config.minNominal || value > config.maxNominal) return 'warning';
+                return 'nominal';
+            }
+        }
+
+        class VectorRenderEngine {
+            constructor() {
+                this.dom = {
+                    glucoseVal: document.getElementById('val-glucose'),
+                    glucoseDot: document.getElementById('dot-glucose'),
+                    glucoseTrend: document.getElementById('trend-label-glucose'),
+                    glucosePath: document.getElementById('path-glucose'),
+                    hemoglobinVal: document.getElementById('val-hemoglobin'),
+                    hemoglobinDot: document.getElementById('dot-hemoglobin'),
+                    dopamineVal: document.getElementById('val-dopamine'),
+                    dopamineDot: document.getElementById('dot-dopamine'),
+                    dopamineTrend: document.getElementById('trend-label-dopamine'),
+                    dopaminePath: document.getElementById('path-dopamine'),
+                    centralAlert: document.getElementById('central-status-bar'),
+                    reticle: document.getElementById('hud-reticle')
+                };
+            }
+
+            renderAll() {
+                this.renderGlucoseModule();
+                this.renderHemoglobinModule();
+                this.renderDopamineModule();
+                this.orchestrateGlobalDiagnosticAlerts();
+            }
+
+            renderGlucoseModule() {
+                const value = HUDState.metrics.glucose;
+                this.dom.glucoseVal.innerText = value.toFixed(2);
+                const state = TelemetryEngine.evaluateState(value, BIOMED_CONFIG.glucose);
+                this.applyStateStyles(this.dom.glucoseVal, this.dom.glucoseDot, state);
+                this.dom.glucoseTrend.innerText = HUDState.interventions.glucoseActive ? "Reconstituting" : "Trending Down";
+                this.dom.glucoseTrend.className = HUDState.interventions.glucoseActive ? "state-nominal" : "state-critical";
+
+                const dPath = this.generateSvgPath(HUDState.history.glucose, 300, 60, 2.5, 5.5);
+                this.dom.glucosePath.setAttribute('d', dPath);
+                this.dom.glucosePath.setAttribute('stroke', `var(--status-${state})`);
+            }
+
+            renderHemoglobinModule() {
+                const value = HUDState.metrics.hemoglobin;
+                this.dom.hemoglobinVal.innerText = Math.round(value);
+                const state = TelemetryEngine.evaluateState(value, BIOMED_CONFIG.hemoglobin);
+                this.applyStateStyles(this.dom.hemoglobinVal, this.dom.hemoglobinDot, state);
+            }
+
+            renderDopamineModule() {
+                const value = HUDState.metrics.dopamine;
+                this.dom.dopamineVal.innerText = `${value > 0 ? '+' : ''}${Math.round(value)}%`;
+                const state = TelemetryEngine.evaluateState(value, BIOMED_CONFIG.dopamine);
+                this.applyStateStyles(this.dom.dopamineVal, this.dom.dopamineDot, state);
+                this.dom.dopamineTrend.innerText = HUDState.interventions.dopamineActive ? "Regulating Matrix" : "Depletion State";
+                this.dom.dopamineTrend.className = HUDState.interventions.dopamineActive ? "state-nominal" : "state-warning";
+
+                const dPath = this.generateSvgPath(HUDState.history.dopamine, 300, 60, -60, 20);
+                this.dom.dopaminePath.setAttribute('d', dPath);
+                this.dom.dopaminePath.setAttribute('stroke', `var(--status-${state})`);
+            }
+
+            applyStateStyles(textNode, dotNode, state) {
+                textNode.className = `value-token state-${state}`;
+                dotNode.className = `status-micro-dot bg-${state}`;
+            }
+
+            orchestrateGlobalDiagnosticAlerts() {
+                const gState = TelemetryEngine.evaluateState(HUDState.metrics.glucose, BIOMED_CONFIG.glucose);
+                const hState = TelemetryEngine.evaluateState(HUDState.metrics.hemoglobin, BIOMED_CONFIG.hemoglobin);
+                const dState = TelemetryEngine.evaluateState(HUDState.metrics.dopamine, BIOMED_CONFIG.dopamine);
+
+                if (gState === 'critical' || dState === 'critical') {
+                    this.dom.centralAlert.innerText = "System Diagnostic: Immediate Intervention Critical";
+                    this.dom.centralAlert.style.color = "var(--status-critical)";
+                    if(this.dom.reticle) this.dom.reticle.style.opacity = "0.7";
+                } else if (gState === 'warning' || hState === 'warning' || dState === 'warning') {
+                    this.dom.centralAlert.innerText = "System Diagnostic: Disruption Detected // Review Logs";
+                    this.dom.centralAlert.style.color = "var(--status-warning)";
+                    if(this.dom.reticle) this.dom.reticle.style.opacity = "0.4";
+                } else {
+                    this.dom.centralAlert.innerText = "System Diagnostic: Telemetry Nominal";
+                    this.dom.centralAlert.style.color = "var(--status-nominal)";
+                    if(this.dom.reticle) this.dom.reticle.style.opacity = "0.25";
+                }
+            }
+
+            generateSvgPath(data, width, height, minVal, maxVal) {
+                if (data.length === 0) return "";
+                const stepX = width / (data.length - 1);
+                const points = data.map((val, index) => {
+                    const x = index * stepX;
+                    let normalizedY = (val - minVal) / (maxVal - minVal);
+                    normalizedY = Math.max(0, Math.min(1, normalizedY));
+                    const y = height - (normalizedY * height);
+                    return { x, y };
+                });
+
+                let d = `M ${points[0].x} ${points[0].y}`;
+                for (let i = 0; i < points.length - 1; i++) {
+                    const p0 = points[i];
+                    const p1 = points[i + 1];
+                    const cpX1 = p0.x + (p1.x - p0.x) / 3;
+                    const cpY1 = p0.y;
+                    const cpX2 = p0.x + 2 * (p1.x - p0.x) / 3;
+                    const cpY2 = p1.y;
+                    d += ` C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${p1.x} ${p1.y}`;
+                }
+                return d;
+            }
+        }
+
+        class InterventionManager {
+            static registerTriggers() {
+                document.getElementById('action-glucose').addEventListener('click', () => {
+                    HUDState.interventions.glucoseActive = true;
+                    InterventionManager.feedbackBlink('node-glucose');
+                });
+                document.getElementById('action-hypoxia').addEventListener('click', () => {
+                    HUDState.interventions.hypoxiaActive = true;
+                    InterventionManager.feedbackBlink('node-hemoglobin');
+                });
+                document.getElementById('action-dopamine').addEventListener('click', () => {
+                    HUDState.interventions.dopamineActive = true;
+                    InterventionManager.feedbackBlink('node-dopamine');
+                });
+            }
+
+            static feedbackBlink(targetElementId) {
+                const element = document.getElementById(targetElementId).parentElement;
+                element.style.background = "rgba(255, 255, 255, 0.15)";
+                setTimeout(() => { element.style.background = "var(--bg-glass-light)"; }, 300);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            Chronometer.init();
+            InterventionManager.registerTriggers();
+            
+            const cameraPipeline = new ARCameraPipeline();
+            const renderer = new VectorRenderEngine();
+
+            // Привязываем инициализацию к физической кнопке
+            document.getElementById('camera-activation-trigger').addEventListener('click', () => {
+                cameraPipeline.initializeCapture();
+            });
+
+            setInterval(() => {
+                TelemetryEngine.computeDynamicMetabolism();
+                renderer.renderAll();
+            }, 1000);
+
+            renderer.renderAll();
+        });
+    </script>
+</body>
+</html>
